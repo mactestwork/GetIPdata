@@ -5,6 +5,7 @@ DateTime==4.1.1
 logging==0.4.9.6
 lxml==3.7.3
 packaging==16.8
+progressbar==2.3
 pyparsing==2.2.0
 pytz==2017.2
 six==1.10.0
