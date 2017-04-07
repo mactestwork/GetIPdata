@@ -1,0 +1,11 @@
+appdirs==1.4.3
+beautifulsoup4==4.5.3
+configparser==3.5.0
+DateTime==4.1.1
+logging==0.4.9.6
+lxml==3.7.3
+packaging==16.8
+pyparsing==2.2.0
+pytz==2017.2
+six==1.10.0
+zope.interface==4.3.3
