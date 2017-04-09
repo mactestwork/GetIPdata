@@ -13,6 +13,7 @@ import json
 import threading
 import Queue
 import socket
+import yaml
 from bs4 import BeautifulSoup
 
 reload(sys)
@@ -27,9 +28,12 @@ parser = argparse.ArgumentParser(
     epilog='comments > /dev/null'
 )
 parser.add_argument('--ListSites', "-l",  action='store_true', help='Show sources')
-parser.add_argument('--time', "-t",  type=str, help='Only for pastebin, you can choose current, 7, 30, 365')
-parser.add_argument('--verbose', "-v",  action='store_true', help='Sure?')
 parser.add_argument('--Site', "-s",  type=str, help='Sure?')
+parser.add_argument('--ALL', "-a",  action='store_true', help='All sources')
+parser.add_argument('--date', "-d",  type=str, help='Only for pastebin, you can choose current, 7, 30, 365')
+parser.add_argument('--verbose', "-v",  action='store_true', help='Sure?')
+parser.add_argument('--merge', "-m",  action='store_true', help='all data is merged')
+parser.add_argument('--join', "-j",  action='store_true', help='all data is joined')
 #parser.add_argument('--User', "-u", type=str, help='A user')
 
 args=parser.parse_args()
@@ -50,10 +54,6 @@ def whoami():
     return inspect.stack()[1][3]
 #---------------------------------------------------
 def configlogging():
-    if VERBOSE:
-        myself = whoami()
-        print ("[{0:10}] configuring").format(myself)
-    # logging.basicConfig(filename=Config.get('LOG','FileLog'),level=Config.get('LOG','Level'),format=Config.get('LOG','Format'),datefmt=Config.get('LOG','DateFMT'))
     logging.basicConfig(filename=(Config.get('LOG', 'Path') + Config.get('LOG', 'FileLog')),
                         level=Config.get('LOG', 'Level'),
                         format='%(asctime)s:%(levelname)s:%(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -64,9 +64,44 @@ def ListSources(sources):
         print ("{0:02}-\t{1}").format(int(m),n)
     print "\n"
 # ---------------------------------------------------
-def malwaredomainlist(url, page, option):
-    case={1:Config.get(Config.get('SITES', args.Site), 'fileip'),
-            2:Config.get(Config.get('SITES', args.Site), 'filehost')}
+def ShowAllSources (sources, dt):
+    print "\n"
+    for m,n in sources.items('SITES'):
+        print ("{0:02}-\t{1}").format(int(m),n)
+        if m == '1':
+            pages = getLinks('PASTEBIN', Config.get(Config.get('SITES', m), 'pastebinTrend'), browserAgent, dt)
+            fd = open(resultsFile, "w")
+            fd.write(pages)
+            fd.close
+        elif m == '2':
+            response = urllib2.urlopen(Config.get(Config.get('SITES',m), 'ip'))
+            if response.getcode() == 200:
+                malwaredomainlist(Config.get(Config.get('SITES', m), 'ip'), response, 1, m)
+            else:
+                logging.error('error page {0} '.format(response.getcode()))
+
+            response = urllib2.urlopen(Config.get(Config.get('SITES', m), 'host'))
+            if response.getcode() == 200:
+                malwaredomainlist(Config.get(Config.get('SITES', m), 'host'), response, 2, m)
+            else:
+                logging.error('error page {0} '.format(response.getcode()))
+
+        elif m == '5' or m == '3':
+            response = urllib2.urlopen(Config.get(Config.get('SITES', m), 'ip'))
+            if response.getcode() == 200:
+                IPSIMPLEproject(Config.get(Config.get('SITES', m), 'ip'), response, m)
+            else:
+                logging.error('error page {0} '.format(response.getcode()))
+        elif m == '4':
+            print Config.get(Config.get('SITES', m), 'ip')
+            req = urllib2.Request(Config.get(Config.get('SITES', m), 'ip'), headers=browserAgent)
+            response = urllib2.urlopen(req).read()
+            IPSIMPLEproject(Config.get(Config.get('SITES', m), 'ip'), response, m)
+    print "\n"
+# ---------------------------------------------------
+def malwaredomainlist(url, page, option, siteid):
+    case={1:Config.get(Config.get('SITES', siteid), 'fileip'),
+            2:Config.get(Config.get('SITES', siteid), 'filehost')}
     if VERBOSE:
         myself = whoami()
         print ("[{0:10}] begin").format(myself)
@@ -96,14 +131,9 @@ def malwaredomainlist(url, page, option):
     else:
         logging.error('NO DATA FOUND. try wget {0}'.format(url))
         os.remove(Config.get('DATA', 'Path') + case[option])
-    if VERBOSE:
-        print ("[{0:10}] end").format(myself)
 # ---------------------------------------------------
 def IPSIMPLEproject(url, page, option):
-    if VERBOSE:
-        myself = whoami()
-        print ("[{0:10}] begin").format(myself)
-    yamlFile = open(Config.get('DATA', 'Path') + Config.get(Config.get('SITES', args.Site), 'fileip'), 'w')
+    yamlFile = open(Config.get('DATA', 'Path') + Config.get(Config.get('SITES', option), 'fileip'), 'w')
     widgets = ['Getting data from [{0}]: '.format(url), pb.Percentage(), ' ',
                pb.Bar(marker=pb.RotatingMarker()), ' ', pb.ETA()]
     timer = pb.ProgressBar(widgets=widgets, maxval=1000000).start()
@@ -130,17 +160,12 @@ def IPSIMPLEproject(url, page, option):
     yamlFile.close
     if i:
         print ("{0} IPs malicious find".format(i))
-        print ("File {0} created !!!").format(Config.get('DATA', 'Path')+Config.get(Config.get('SITES', args.Site), 'fileip'))
+        print ("File {0} created !!!").format(Config.get('DATA', 'Path')+Config.get(Config.get('SITES', option), 'fileip'))
     else:
         logging.error('NO DATA FOUND. try wget {0}'.format(url))
-        os.remove(Config.get('DATA', 'Path') + Config.get(Config.get('SITES', args.Site), 'fileip'))
-    if VERBOSE:
-        print ("[{0:10}] end").format(myself)
+        os.remove(Config.get('DATA', 'Path') + Config.get(Config.get('SITES', option), 'fileip'))
 # ---------------------------------------------------
 def getLinks(site,url,browserAgent,dt):
-    myself=whoami()
-    print ("[{0:10}] opennig mode:[{1}]").format(myself,site)
-    logging.info(("[{0:10}]:opennig mode:[{1}]").format(myself,site))
     data = json.dumps({site: {'URLS': []}})
     try:
         req = urllib2.Request(url, headers=browserAgent)
@@ -163,40 +188,30 @@ def getLinks(site,url,browserAgent,dt):
             if not re.search('\/u\/',element.a["href"]):
                 urlpages.append(element)
         except: None
-    print ("[{0:10}] {1} links managed").format(myself,len(urlpages))
     prefix = Config.get('PASTEBIN', 'prefix')
     link = forkLink( site, prefix, urlpages, data, dt)
-    logging.info(("[{0:10}]:Links OK").format(myself))
     return json.dumps(link)
 # ---------------------------------------------------
 def forkLink (site, prefix, urlpages, data, dt):
-    myself = whoami()
     threads = list()
-    logging.info(("[{0:10}]:Starting Threads data for {1}").format(myself, site))
     queueLock = threading.Lock()
     workQueue = Queue.Queue(len(urlpages))
     workOut = Queue.Queue(2000)
     threads = []
     threadID = 1
     for i in range(len(urlpages)):
-        logging.info(("[{0:10}]:Thread data for {1}").format(myself, i))
         thread = threading.Thread(target=workerThreadPage, args=(threadID, urlpages[i], site, prefix, data, workOut, dt))
         thread.daemon
         thread.start()
         threads.append(thread)
         threadID += 1
 
-    logging.info(("[{0:10}]:All threads started").format(myself))
-
     for link in urlpages:
         workQueue.put(link)
-    logging.info("[{0:10}]:current data loaded".format(myself))
-
 
     for t in threads:
         t.join()
 
-    logging.info(("[{0:10}]:Exiting Main Thread").format(myself))
     cont=0
     link=[]
     while not workOut.empty():
@@ -207,14 +222,9 @@ def forkLink (site, prefix, urlpages, data, dt):
     return data
 #---------------------------------------------------
 def workerThreadPage (threadID, element, site, prefix, data, workOut, dt):
-    myself=whoami()
-    myself+="-threadID-"+str(threadID)
     pagename=element.a["href"].lstrip('/')
-    print ("[{0:10}] Verifing {1}").format(myself, pagename)
-    logging.info("[{0:10}]:Verifing {1}".format(myself, pagename))
     scoring=0
     link=[]
-    logging.info(("[{0:10}]:Flag False {1}").format(myself, pagename))
     scoring = getPage(threadID, pagename,
                       "http://" + prefix + element.a["href"],
                       Config.get('DATA', 'Path') + pagename,
@@ -222,18 +232,10 @@ def workerThreadPage (threadID, element, site, prefix, data, workOut, dt):
     link.append({'page': pagename, 'url': prefix + element.a["href"], 'message': element.text, 'scoring': scoring,
          'datetime': str(dt)})
     minimumScore = Config.get('DATA', 'MinimumScore')
-
-    logging.info(("[{0:10}]:Links OK").format(myself))
-
     workOut.put(link)
 # ---------------------------------------------------
 def getPage (threadID, name, url, fileRaw, browserAgent):
-    myself = whoami()
-    myself += "-threadID-" + str(threadID)
-    print ("[{0:10}] [open] data from :{1}").format(myself,url)
-    logging.info("[{0:10}]:[open] data from :{1}".format(myself,url))
     minimumScore = Config.get('DATA', 'MinimumScore')
-    logging.info("[{0:10}]:\tMinimum score needed :{1}".format( myself, minimumScore))
     timeout = float(Config.get('CONST', 'TimeOUT'))
     socket.setdefaulttimeout(timeout)
     req = urllib2.Request(url, headers=browserAgent)
@@ -242,20 +244,26 @@ def getPage (threadID, name, url, fileRaw, browserAgent):
     scoring=0
     checks={}
     fd= open (fileRaw,'w')
-
+    widgets = ['Getting data from [{0}]: '.format(url), pb.Percentage(), ' ',
+               pb.Bar(marker=pb.RotatingMarker()), ' ', pb.ETA()]
+    timer = pb.ProgressBar(widgets=widgets, maxval=1000000).start()
+    i=0
     for line in str(bsObj).splitlines():
         fd.write(line+"\n")
         if VERBOSE:
             print line
-        else:
-            print "#",
+        i += 1
+        timer.update(i)
         line.replace(" ", "")
         line.replace("`", "")
         line.replace("(\r){0,1}\n", "")
         keywords=Config.items('CODEWORDS')
         for kw in keywords:
-            print ".",
+            i += 1
+            timer.update(i)
             try:
+                i += 1
+                timer.update(i)
                 if re.search(kw[1],line.upper()):
                     print ("[{}]").format(kw[1])
                     sys.stdout.flush()
@@ -265,18 +273,50 @@ def getPage (threadID, name, url, fileRaw, browserAgent):
                         checks.update({kw[0]:1})
                     scoring = scoring +int(kw[0])
             except: None
+
+    timer.finish()
     print ("\nFinal Score: {}").format(scoring)
     sys.stdout.flush()
-    logging.info("[{0:10}]:\t[score]{1}:{2}".format(myself,name,scoring))
     fd.close()
-    logging.info("[{0:10}]:[close] {1} ".format(myself,url))
     if int(scoring) <= int(minimumScore):
-        logging.warning("[{0:10}]:scoring lower [{1}] than minimumScore {2}".format(myself, scoring, minimumScore))
         os.remove(fileRaw)
-        logging.warning("[{0:10}]:[{1}] deleted.".format(myself,name))
-    print ("[{0:10}] page OK").format(myself)
-    logging.info(("[{0:10}]:page OK").format(myself))
     return {'value': scoring, 'checks': checks}
+# ---------------------------------------------------
+def unionfiles(path):
+    ipdanger={}
+    total=0
+    for f in os.listdir(path):
+        if f.endswith("IP.yaml"):
+            aux = yaml.load(file(os.path.join(path, f)))
+            print("file:{0}\t{1}").format(os.path.join(path, f),len(aux))
+            total+=len(aux)
+            ipdanger.update(aux)
+            #print ipdanger
+    print ("Total readed:{0}\t Total joined:{1}").format(total,len(ipdanger))
+    if len(ipdanger)>0:
+        dtname = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        stream=file(path+dtname+Config.get('DATA','Output'),'w')
+        yaml.dump(ipdanger,stream)
+# ---------------------------------------------------
+def interfile(path):
+    ipdanger = {}
+    total = 0
+    for f in os.listdir(path):
+        if f.endswith("IP.yaml"):
+            aux = yaml.load(file(os.path.join(path, f)))
+            print("file:{0}\t{1}").format(os.path.join(path, f), len(aux))
+            total += len(aux)
+            ipdanger.update(aux)
+            # print ipdanger
+    print ("Total readed:{0}\t Total joined:{1}").format(total, len(ipdanger))
+    if len(ipdanger) > 0:
+        dtname = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        stream = file(path + dtname + Config.get('DATA', 'Output'), 'w')
+        yaml.dump(ipdanger, stream)
+# ---------------------------------------------------
+# ---------------------------------------------------
+# ---------------------------------------------------
+# ---------------------------------------------------
 # ---------------------------------------------------
 # ---------------------------------------------------
 def main():
@@ -300,20 +340,27 @@ def main():
     if args.Site:
         if Config.has_option('SITES',args.Site):
             if args.Site == '1':
-                pages = getLinks('PASTEBIN', Config.get(Config.get('SITES',args.Site),'pastebinTrend'), browserAgent, dt)
+                url = Config.get(Config.get('SITES',args.Site),'pastebinTrend')
+                if args.merge == 'w':
+                    url += Config.get('PASTEBIN', 'pastebinWeek')
+                elif args.merge == 'm':
+                    url += Config.get('PASTEBIN', 'pastebinMonth')
+                elif args.merge == 'y':
+                    url += Config.get('PASTEBIN', 'pastebinYear')
+                pages = getLinks('PASTEBIN', url, browserAgent, dt)
                 fd = open(resultsFile, "w")
                 fd.write(pages)
                 fd.close
             elif args.Site == '2':
                 response = urllib2.urlopen(Config.get(Config.get('SITES',args.Site),'ip'))
                 if response.getcode() == 200:
-                    malwaredomainlist(Config.get(Config.get('SITES',args.Site),'ip'), response, 1)
+                    malwaredomainlist(Config.get(Config.get('SITES',args.Site),'ip'), response, 1, args.Site)
                 else:
                     logging.error('error page {0} '.format(response.getcode()))
 
                 response = urllib2.urlopen(Config.get(Config.get('SITES', args.Site), 'host'))
                 if response.getcode() == 200:
-                    malwaredomainlist(Config.get(Config.get('SITES', args.Site), 'host'), response, 2)
+                    malwaredomainlist(Config.get(Config.get('SITES', args.Site), 'host'), response, 2, args.Site)
                 else:
                     logging.error('error page {0} '.format(response.getcode()))
 
@@ -330,15 +377,18 @@ def main():
                 IPSIMPLEproject(Config.get(Config.get('SITES', args.Site), 'ip'), response, args.Site)
             else:
                 print "eo"
-
-
-
         else:
             print ("\nOption {0} output of range.\nSelect other:").format(args.Site)
             ListSources(Config)
+    elif args.ALL:
+        ShowAllSources(Config, dt)
+    elif args.merge:
+        unionfiles(Config.get('DATA', 'path'))
+    elif args.join:
+        interfile(Config.get('DATA', 'path'))
     elif args.ListSites:
         ListSources(Config)
 # ---------------------------------------------------
 # ---------------------------------------------------
 if __name__ == '__main__':
-	main()
+        main()
