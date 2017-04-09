@@ -47,7 +47,7 @@ browserAgent={'User-Agent': 'None',
 
 resultsFile=Config.get('LOG', 'Path')+Config.get('LOG', 'JsonResult')
 proxy=""
-VERBOSE=False
+VERBOSE = False
 
 #---------------------------------------------------
 def whoami():
@@ -199,26 +199,39 @@ def forkLink (site, prefix, urlpages, data, dt):
     workOut = Queue.Queue(2000)
     threads = []
     threadID = 1
-    for i in range(len(urlpages)):
-        thread = threading.Thread(target=workerThreadPage, args=(threadID, urlpages[i], site, prefix, data, workOut, dt))
+    widgets = ['Getting data from [{0}]: '.format('PASTEBIN'), pb.Percentage(), ' ',
+               pb.Bar(marker=pb.RotatingMarker()), ' ', pb.ETA()]
+    timer = pb.ProgressBar(widgets=widgets, maxval=10000).start()
+    i = 0
+    for ii in range(len(urlpages)):
+        thread = threading.Thread(target=workerThreadPage, args=(threadID, urlpages[ii], site, prefix, data, workOut, dt))
         thread.daemon
         thread.start()
         threads.append(thread)
         threadID += 1
+        i += 1
+        timer.update(i)
 
     for link in urlpages:
         workQueue.put(link)
+        i += 1
+        timer.update(i)
 
     for t in threads:
         t.join()
+        i += 1
+        timer.update(i)
 
     cont=0
     link=[]
     while not workOut.empty():
+        i += 1
+        timer.update(i)
         linkE = workOut.get()
-        for i in linkE :
-            link.append(i)
+        for ii in linkE :
+            link.append(ii)
     data = json.dumps({site:{'URLS':link}})
+    timer.finish()
     return data
 #---------------------------------------------------
 def workerThreadPage (threadID, element, site, prefix, data, workOut, dt):
@@ -244,38 +257,25 @@ def getPage (threadID, name, url, fileRaw, browserAgent):
     scoring=0
     checks={}
     fd= open (fileRaw,'w')
-    widgets = ['Getting data from [{0}]: '.format(url), pb.Percentage(), ' ',
-               pb.Bar(marker=pb.RotatingMarker()), ' ', pb.ETA()]
-    timer = pb.ProgressBar(widgets=widgets, maxval=1000000).start()
-    i=0
+
     for line in str(bsObj).splitlines():
         fd.write(line+"\n")
         if VERBOSE:
             print line
-        i += 1
-        timer.update(i)
         line.replace(" ", "")
         line.replace("`", "")
         line.replace("(\r){0,1}\n", "")
         keywords=Config.items('CODEWORDS')
         for kw in keywords:
-            i += 1
-            timer.update(i)
             try:
-                i += 1
-                timer.update(i)
                 if re.search(kw[1],line.upper()):
-                    print ("[{}]").format(kw[1])
-                    sys.stdout.flush()
                     try :
                         checks[kw[0]]+=1
                     except:
                         checks.update({kw[0]:1})
                     scoring = scoring +int(kw[0])
             except: None
-
-    timer.finish()
-    print ("\nFinal Score: {}").format(scoring)
+    #print ("\nFinal Score: {}").format(scoring)
     sys.stdout.flush()
     fd.close()
     if int(scoring) <= int(minimumScore):
